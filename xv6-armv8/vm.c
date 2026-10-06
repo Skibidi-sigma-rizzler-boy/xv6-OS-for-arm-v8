@@ -8,6 +8,9 @@
 #include "spinlock.h"
 #include "elf.h"
 
+#define PTE_COW (1ULL << 55)
+#define PTE_AP_RO (1ULL << 7)
+
 extern char data[];  // defined by kernel.ld
 pgd_t *kpgdir;  // for use in scheduler()
 
@@ -45,7 +48,7 @@ static void _kpt_free (char *v)
 static void kpt_free (char *v)
 {
     if (v >= (char*)P2V(INIT_KERNMAP)) {
-        kfree(v, PT_ORDER);
+        kfree_page(v);
         return;
     }
     
@@ -351,13 +354,15 @@ void clearpteu (pgd_t *pgdir, char *uva)
 }
 
 // Given a parent process's page table, create a copy
-// of it for a child.
+// of it for a child.|
+
+
+
 pgd_t* copyuvm (pgd_t *pgdir, uint sz)
 {
     pgd_t *d;
     pte_t *pte;
     uint64 pa, i, ap;
-    char *mem;
 
     // allocate a new first level page directory
     d = kpt_alloc();
@@ -374,24 +379,20 @@ pgd_t* copyuvm (pgd_t *pgdir, uint sz)
         if (!(*pte & (ENTRY_PAGE | ENTRY_VALID))) {
             panic("copyuvm: page not present");
         }
+    
+      *pte = *pte | PTE_AP_RO| PTE_COW;  // mark the page as copy-on-write
+      ap = PTE_AP(*pte) | PTE_AP_RO| PTE_COW;  // mark the page as copy-on-write
 
-        pa = PTE_ADDR (*pte);
-        ap = PTE_AP (*pte);
+       kpage_ref((void*)PTE_ADDR(*pte));  // increment the reference count for the page
 
-        if ((mem = alloc_page()) == 0) {
-            goto bad;
-        }
+        pa = PTE_ADDR(*pte);
 
-        memmove(mem, (char*) p2v(pa), PTE_SZ);
+        flush_tlb();  // flush the TLB to ensure the new mapping is used
 
-        if (mappages(d, (void*) i, PTE_SZ, v2p(mem), ap) < 0) {
-            goto bad;
-        }
+        mappages(d, (void*) i, PTE_SZ, pa, ap);
+
     }
     return d;
-
-bad: freevm(d);
-    return 0;
 }
 
 //PAGEBREAK!

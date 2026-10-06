@@ -1572,6 +1572,7 @@ fsfull()
         if(total == 0)
             break;
     }
+    (void)fsblocks;
     
     while(nfiles >= 0){
         char name[64];

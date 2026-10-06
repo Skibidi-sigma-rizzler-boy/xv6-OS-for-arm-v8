@@ -1,6 +1,6 @@
-# Cross-compiling (e.g., on Mac OS X, install arm-none-eabi-gcc with MacPorts)
+# Cross-compiling (e.g., on macOS, install aarch64-elf-gcc with Homebrew)
 #CROSSCOMPILE := aarch64-linux-gnu-
-CROSSCOMPILE := aarch64-none-elf-
+CROSSCOMPILE := aarch64-elf-
 # try linux eabi
 # CROSSCOMPILE := arm-linux-gnueabi-
 CC = $(CROSSCOMPILE)gcc

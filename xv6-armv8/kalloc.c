@@ -9,6 +9,8 @@
 #include "mmu.h"
 #include "spinlock.h"
 #include "arm.h"
+#define PA2IDX(pa) (((uint64)(pa) - PHY_START) / PTE_SZ)
+int page_refcount[((PHYSTOP - PHY_START) / PTE_SZ)]; // max reference count for each page
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
@@ -22,12 +24,6 @@ static struct {
     int use_lock;
     struct run *freelist;
 } kmem;
-
-void kmem_init (void)
-{
-    initlock(&kmem.lock, "kmem");
-    kmem.use_lock = 0;
-}
 
 // Initialization happens in two phases.
 // 1. main() calls kinit1() while still using entrypgdir to place just
@@ -52,8 +48,11 @@ void freerange(void *vstart, void *vend)
     p = (char*)align_up (vstart, PTE_SZ);
 
     for(; p + PTE_SZ <= (char*)vend; p += PTE_SZ) {
-        kfree(p);
+        page_refcount[PA2IDX(v2p(p))] = 1;
+         kfree_page(p);
     }
+       
+    
 }
 
 //PAGEBREAK: 21
@@ -61,13 +60,14 @@ void freerange(void *vstart, void *vend)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
-void kfree(char *v)
+void kfree_page(char *v)
 {
+    
     struct run *r;
 
-    if((uint)v % PTE_SZ || v < end || v2p(v) >= PHYSTOP) {
-        cprintf("kfree(0x%x)\n", v);
-        panic("kfree");
+    if((uint64)v % PTE_SZ || v < end || v2p(v) >= PHYSTOP) {
+        cprintf("kfree_page(0x%x)\n", v);
+        panic("kfree_page");
     }
 
     // Fill with junk to catch dangling refs.
@@ -77,8 +77,18 @@ void kfree(char *v)
         acquire(&kmem.lock);
     }
 
+    page_refcount[PA2IDX(v2p(v))] -= 1;
+
     r = (struct run*)v;
+    if(page_refcount[PA2IDX(v2p(v))] == 0){
     r->next = kmem.freelist;
+    }
+    if(page_refcount[PA2IDX(v2p(v))] > 0){
+        if(kmem.use_lock) {
+            release(&kmem.lock);
+        }
+        return;
+    }
     kmem.freelist = r;
 
     if(kmem.use_lock) {
@@ -106,6 +116,21 @@ char* kalloc(void)
     if(kmem.use_lock) {
         release(&kmem.lock);
     }
-
+    if(r){
+    page_refcount[PA2IDX(v2p(r))] = 1;
+    }
     return (char*)r;
 }
+
+void kpage_ref(void *pa){
+    if(kmem.use_lock) {
+        acquire(&kmem.lock);
+    }
+    if(pa != NULL){
+    page_refcount[PA2IDX((uint64)pa)] += 1;
+    }
+    if(kmem.use_lock) {
+        release(&kmem.lock);
+    }
+}
+

@@ -98,11 +98,11 @@ void            ideinit(void);
 void            iderw(struct buf*);
 
 // kalloc.c
-/*char*           kalloc(void);
-void            kfree(char*);
+char*           kalloc(void);
+void            kfree_page(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
-void            kmem_init (void);*/
+void            kpage_ref(void*);
 
 // log.c
 void            initlog(void);

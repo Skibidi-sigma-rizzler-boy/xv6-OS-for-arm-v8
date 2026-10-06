@@ -11,7 +11,13 @@
 #include "stat.h"
 #include "param.h"
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+#if !__has_feature(c_static_assert)
 #define static_assert(a, b) do { switch (0) case 0: case (a): ; } while (0)
+#endif
 
 int nblocks = 985;
 int nlog = LOGSIZE;
